@@ -8,7 +8,7 @@ async def setup_browser():
         EMAIL = os.getenv("LINKEDIN_EMAIL")
         PASSWORD = os.getenv("LINKEDIN_PASS")
         playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=False)
+        browser = await playwright.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
         await page.goto("https://www.linkedin.com/login")
