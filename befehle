@@ -1,0 +1,7 @@
+# Terminal 1: FastAPI starten
+# uvicorn main:app --reload
+
+# Terminal 2: ngrok starten
+# ngrok http 8000
+
+msg-s-message-list__time-heading t-12 t-black--light t-bold
