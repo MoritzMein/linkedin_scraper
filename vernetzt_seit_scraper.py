@@ -3,7 +3,23 @@ import os
 from playwright.async_api import async_playwright
 import asyncio
 
+async def setup_browser():
+        load_dotenv()
+        EMAIL = os.getenv("LINKEDIN_EMAIL")
+        PASSWORD = os.getenv("LINKEDIN_PASS")
+        playwright = await async_playwright().start()
+        browser = await playwright.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+        await page.goto("https://www.linkedin.com/login")
+        await page.fill("input#username", EMAIL)
+        await page.fill("input#password", PASSWORD)
+        await page.click("button[type='submit']")
+        return browser, page, playwright
 
+async def close_browser(browser, playwright):
+    await browser.close()
+    await playwright.stop()
 
 def format_german_date(date_str):
     months = {
