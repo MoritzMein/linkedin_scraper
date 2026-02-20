@@ -41,16 +41,28 @@ async def get_vernetzt_seit(profile_url, page):
     profile_url = profile_url + 'overlay/contact-info/'
     await page.goto(profile_url)
     
-    # Prüfen, ob der "Vernetzt"-Reiter (Header) sichtbar ist
-    vernetzt_header = page.locator("h3.pv-contact-info__header:has-text('Vernetzt')")
+    # Warten bis das Overlay geladen ist
+    await page.wait_for_load_state("networkidle")
     
-    if await vernetzt_header.is_visible():
-        # Optional: Das Datum auslesen
-        date_element = vernetzt_header.locator("xpath=..").locator(".t-black.t-normal")
-        if await date_element.is_visible():
-            raw_date = await date_element.inner_text()
-            formatted_date = format_german_date(raw_date.strip())
-            return formatted_date
+    # Beide Sprachen abdecken: Deutsch und Englisch
+    vernetzt_header = page.locator("h3.pv-contact-info__header:has-text('Vernetzt'), h3.pv-contact-info__header:has-text('Connected')")
     
-    return "Nicht vernetzt"
+    try:
+        await vernetzt_header.wait_for(timeout=5000)
+    except:
+        # Debug: Was ist auf der Seite?
+        print(f"[DEBUG] URL: {page.url}")
+        print(f"[DEBUG] Alle h3 Headers: {await page.locator('h3').all_inner_texts()}")
+        return "Nicht vernetzt"
+    
+    date_element = vernetzt_header.locator("xpath=..").locator(".t-black.t-normal")
+    
+    try:
+        await date_element.wait_for(timeout=3000)
+        raw_date = await date_element.inner_text()
+        formatted_date = format_german_date(raw_date.strip())
+        return formatted_date
+    except:
+        return "Vernetzt (Datum nicht gefunden)"
+
 
