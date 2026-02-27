@@ -7,14 +7,38 @@ async def setup_browser():
         load_dotenv()
         EMAIL = os.getenv("LINKEDIN_EMAIL")
         PASSWORD = os.getenv("LINKEDIN_PASS")
+        
+        if not EMAIL or not PASSWORD:
+            raise ValueError("LINKEDIN_EMAIL und LINKEDIN_PASS nicht in Umgebungsvariablen gesetzt!")
+        
         playwright = await async_playwright().start()
         browser = await playwright.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
-        await page.goto("https://www.linkedin.com/login")
-        await page.fill("input#username", EMAIL)
-        await page.fill("input#password", PASSWORD)
-        await page.click("button[type='submit']")
+        
+        # Gehe zum Login
+        await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
+        
+        # Fülle Login-Formular
+        try:
+            await page.fill("input#username", EMAIL, timeout=5000)
+            await page.fill("input#password", PASSWORD, timeout=5000)
+            await page.click("button[type='submit']", timeout=5000)
+            
+            # WICHTIG: Warte bis der Login tatsächlich abgeschlossen ist
+            # Warte bis wir nicht mehr auf der authwall/login Seite sind
+            await page.wait_for_load_state("networkidle", timeout=15000)
+            
+            # Prüfe ob Login erfolgreich war
+            if "authwall" in page.url or "login" in page.url:
+                raise Exception(f"Login fehlgeschlagen! URL: {page.url}")
+                
+            print("✅ LinkedIn Login erfolgreich!")
+        except Exception as e:
+            await browser.close()
+            await playwright.stop()
+            raise Exception(f"Login-Fehler: {e}")
+        
         return browser, page, playwright
 
 async def close_browser(browser, playwright):
