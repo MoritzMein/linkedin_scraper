@@ -2,6 +2,10 @@ from dotenv import load_dotenv
 import os
 from playwright.async_api import async_playwright
 import asyncio
+import json
+from pathlib import Path
+
+COOKIES_FILE = Path("/tmp/linkedin_cookies.json")  # In /tmp speichern für Railway Kompatibilität
 
 async def setup_browser():
         load_dotenv()
@@ -12,28 +16,77 @@ async def setup_browser():
             raise ValueError("LINKEDIN_EMAIL und LINKEDIN_PASS nicht in Umgebungsvariablen gesetzt!")
         
         playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=True)
-        context = await browser.new_context()
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=['--disable-blink-features=AutomationControlled']  # Bot-Detection reduzieren
+        )
+        context = await browser.new_context(
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        )
+        
+        # Versuche gespeicherte Cookies zu laden
+        if COOKIES_FILE.exists():
+            try:
+                with open(COOKIES_FILE, 'r') as f:
+                    cookies = json.load(f)
+                    await context.add_cookies(cookies)
+                print("✅ Gespeicherte LinkedIn Cookies geladen")
+            except Exception as e:
+                print(f"Warnung: Cookies konnten nicht geladen werden: {e}")
+        
         page = await context.new_page()
         
-        # Gehe zum Login
-        await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
-        
-        # Fülle Login-Formular
+        # Test: Gehe zu LinkedIn home um zu checken ob Cookies noch gültig sind
         try:
+            await page.goto("https://www.linkedin.com/feed", wait_until="domcontentloaded", timeout=10000)
+            if "authwall" not in page.url and "/login" not in page.url:
+                print("✅ LinkedIn mit gespeicherten Cookies erfolgreich authentifiziert!")
+                return browser, page, playwright
+        except:
+            pass
+        
+        # Cookies ungültig oder nicht vorhanden - neu loggen
+        print("🔄 Führe neuen LinkedIn Login durch...")
+        
+        try:
+            await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=10000)
+            
+            # Fülle Login-Formular
             await page.fill("input#username", EMAIL, timeout=5000)
+            await asyncio.sleep(0.5)  # Menschlicher Delay
+            
             await page.fill("input#password", PASSWORD, timeout=5000)
+            await asyncio.sleep(0.5)
+            
             await page.click("button[type='submit']", timeout=5000)
             
-            # WICHTIG: Warte bis der Login tatsächlich abgeschlossen ist
-            # Warte bis wir nicht mehr auf der authwall/login Seite sind
-            await page.wait_for_load_state("networkidle", timeout=15000)
+            # Warte auf erfolgreichen Login
+            try:
+                await page.wait_for_url("**/feed/**", timeout=15000)
+            except:
+                try:
+                    await page.wait_for_selector("a[href='/messaging/']", timeout=15000)
+                except:
+                    await page.wait_for_load_state("networkidle", timeout=15000)
             
-            # Prüfe ob Login erfolgreich war
-            if "authwall" in page.url or "login" in page.url:
+            await asyncio.sleep(2)  # Extra Wartezeit
+            
+            # Validiere Login
+            if "authwall" in page.url or "/login" in page.url:
                 raise Exception(f"Login fehlgeschlagen! URL: {page.url}")
-                
+            
+            # Speichere Cookies für zukünftige Verwendung
+            try:
+                cookies = await context.cookies()
+                COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+                with open(COOKIES_FILE, 'w') as f:
+                    json.dump(cookies, f)
+                print("💾 LinkedIn Cookies gespeichert für zukünftige Verwendung")
+            except Exception as e:
+                print(f"Warnung: Cookies konnten nicht gespeichert werden: {e}")
+            
             print("✅ LinkedIn Login erfolgreich!")
+            
         except Exception as e:
             await browser.close()
             await playwright.stop()
