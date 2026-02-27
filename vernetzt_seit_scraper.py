@@ -8,7 +8,7 @@ async def setup_browser():
         EMAIL = os.getenv("LINKEDIN_EMAIL")
         PASSWORD = os.getenv("LINKEDIN_PASS")
         playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=True)
+        browser = await playwright.chromium.launch(headless=False)
         context = await browser.new_context()
         page = await context.new_page()
         await page.goto("https://www.linkedin.com/login")
@@ -38,24 +38,31 @@ def format_german_date(date_str):
     return date_str
 
 async def get_vernetzt_seit(profile_url, page):
+    # Stelle sicher, dass die URL mit / endet, bevor wir overlay anhängen
+    if not profile_url.endswith('/'):
+        profile_url = profile_url + '/'
     profile_url = profile_url + 'overlay/contact-info/'
-    await page.goto(profile_url)
+    try:
+        # Nutze "domcontentloaded" statt "networkidle" für schnellere Antworten
+        await page.goto(profile_url, wait_until="domcontentloaded", timeout=15000)
+    except Exception as e:
+        print(f"[DEBUG] Goto-Fehler: {e}")
+        # Versuche trotzdem zu scrapen, vielleicht ist die Seite teilweise geladen
+        pass
     
-    # Warten bis das Overlay geladen ist
-    await page.wait_for_load_state("networkidle")
-    
-    # Beide Sprachen abdecken: Deutsch und Englisch
-    vernetzt_header = page.locator("h3.pv-contact-info__header:has-text('Vernetzt'), h3.pv-contact-info__header:has-text('Connected')")
+    # Suche nach dem p-Element mit "Vernetzt seit" oder "Connected since"
+    vernetzt_header = page.locator("p:has-text('Vernetzt seit'), p:has-text('Connected since')")
     
     try:
         await vernetzt_header.wait_for(timeout=5000)
     except:
         # Debug: Was ist auf der Seite?
         print(f"[DEBUG] URL: {page.url}")
-        print(f"[DEBUG] Alle h3 Headers: {await page.locator('h3').all_inner_texts()}")
+        print(f"[DEBUG] Alle p-Texte: {await page.locator('p').all_inner_texts()}")
         return "Nicht vernetzt"
     
-    date_element = vernetzt_header.locator("xpath=..").locator(".t-black.t-normal")
+    # Das Datum ist im nächsten p-Element Sibling
+    date_element = vernetzt_header.locator("xpath=following-sibling::p[1]")
     
     try:
         await date_element.wait_for(timeout=3000)
