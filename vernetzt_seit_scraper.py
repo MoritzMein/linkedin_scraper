@@ -3,63 +3,46 @@ import os
 from playwright.async_api import async_playwright
 import asyncio
 import json
-from pathlib import Path
-
-COOKIES_FILE = Path("/tmp/linkedin_cookies.json")
 
 async def setup_browser():
-        load_dotenv()
-        EMAIL = os.getenv("LINKEDIN_EMAIL")
-        PASSWORD = os.getenv("LINKEDIN_PASS")
-        
-        if not EMAIL or not PASSWORD:
-            raise ValueError("LINKEDIN_EMAIL und LINKEDIN_PASS nicht in Umgebungsvariablen gesetzt!")
-        
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=True)
-        context = await browser.new_context()
-        page = await context.new_page()
-        
-        # Versuche gespeicherte Cookies zu laden
-        if COOKIES_FILE.exists():
-            try:
-                with open(COOKIES_FILE, 'r') as f:
-                    cookies = json.load(f)
-                    await context.add_cookies(cookies)
-                print("✅ Cookies geladen")
-            except:
-                pass
-        
-        # Gehe zum Login
-        await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
-        
-        # Fülle Login-Formular
-        try:
-            await page.fill("input#username", EMAIL, timeout=5000)
-            await page.fill("input#password", PASSWORD, timeout=5000)
-            await page.click("button[type='submit']", timeout=5000)
-            
-            # Warte einfach auf networkidle - nicht auf Feed
-            await page.wait_for_load_state("networkidle", timeout=10000)
-            
-            # Speichere Cookies für nächstes Mal
-            try:
-                cookies = await context.cookies()
-                if cookies:
-                    COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
-                    with open(COOKIES_FILE, 'w') as f:
-                        json.dump(cookies, f)
-            except:
-                pass
-            
-            print("✅ Browser bereit")
-            
-        except Exception as e:
-            await browser.close()
-            await playwright.stop()
-            raise Exception(f"Login-Fehler: {e}")
-        
-        return browser, page, playwright
+    load_dotenv()
+    cookies_json = os.getenv("LINKEDIN_COOKIES")
+
+    if not cookies_json:
+        raise ValueError(
+            "LINKEDIN_COOKIES nicht gesetzt! "
+            "Führe export_cookies.py lokal aus und trage den Output in Railway ein."
+        )
+
+    cookies = json.loads(cookies_json)
+
+    playwright = await async_playwright().start()
+    browser = await playwright.chromium.launch(
+        headless=True,
+        args=["--disable-blink-features=AutomationControlled"]
+    )
+    context = await browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        viewport={"width": 1280, "height": 800},
+        locale="de-DE",
+    )
+    page = await context.new_page()
+    await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+    await context.add_cookies(cookies)
+
+    # Session-Check
+    await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=15000)
+    if "authwall" in page.url or "login" in page.url or "checkpoint" in page.url:
+        await browser.close()
+        await playwright.stop()
+        raise Exception(
+            f"Cookies ungültig oder abgelaufen (Weitergeleitet zu: {page.url}). "
+            "Führe export_cookies.py erneut aus und aktualisiere LINKEDIN_COOKIES in Railway."
+        )
+
+    print("✅ Browser bereit (Cookies geladen)")
+    return browser, page, playwright
 
 async def close_browser(browser, playwright):
     await browser.close()
