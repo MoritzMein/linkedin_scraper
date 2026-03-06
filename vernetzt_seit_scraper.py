@@ -52,7 +52,11 @@ def format_german_date(date_str):
     months_de = {
         "Januar": "01", "Februar": "02", "März": "03", "April": "04",
         "Mai": "05", "Juni": "06", "Juli": "07", "August": "08",
-        "September": "09", "Oktober": "10", "November": "11", "Dezember": "12"
+        "September": "09", "Oktober": "10", "November": "11", "Dezember": "12",
+        # Deutsche Abkürzungen
+        "Jan": "01", "Feb": "02", "Mär": "03", "Apr": "04",
+        "Jun": "06", "Jul": "07", "Aug": "08", "Sep": "09", 
+        "Okt": "10", "Nov": "11", "Dez": "12"
     }
     months_en = {
         "January": "01", "February": "02", "March": "03", "April": "04",
