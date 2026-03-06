@@ -127,7 +127,7 @@ async def get_vernetzt_seit(profile_url, page):
     if not vernetzt_header:
         print(f"[DEBUG] URL: {page.url}")
         print(f"[DEBUG] Vernetzt-Header nicht gefunden mit allen Selektoren")
-        return "Nicht vernetzt"
+        return "Nicht vernetzt oder Fehler"
     
     # Versuche verschiedene Wege das Datum zu finden
     date_strategies = [
