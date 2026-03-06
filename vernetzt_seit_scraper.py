@@ -112,7 +112,7 @@ async def get_vernetzt_seit(profile_url, page):
     except:
         # Debug: Was ist auf der Seite?
         print(f"[DEBUG] URL: {page.url}")
-        print(f"[DEBUG] Alle p-Texte: {await page.locator('p').all_inner_texts()}")
+        print(f"[DEBUG] Vernetzt-Header nicht gefunden")
         return "Nicht vernetzt"
     
     # Das Datum ist im nächsten p-Element Sibling
