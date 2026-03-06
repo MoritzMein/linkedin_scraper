@@ -40,9 +40,10 @@ async def setup_browser():
             f"Cookies ungültig oder abgelaufen (Weitergeleitet zu: {page.url}). "
             "Führe export_cookies.py erneut aus und aktualisiere LINKEDIN_COOKIES in Railway."
         )
+    await page.close()  # Session-Check Seite schließen
 
     print("✅ Browser bereit (Cookies geladen)")
-    return browser, page, playwright
+    return browser, context, playwright
 
 async def close_browser(browser, playwright):
     await browser.close()
@@ -95,18 +96,22 @@ def format_german_date(date_str):
     
     return date_str
 
-async def get_vernetzt_seit(profile_url, page):
+async def get_vernetzt_seit(profile_url, context):
     # Stelle sicher, dass die URL mit / endet, bevor wir overlay anhängen
     if not profile_url.endswith('/'):
         profile_url = profile_url + '/'
     profile_url = profile_url + 'overlay/contact-info/'
+
+    # Neue Seite pro Request - verhindert dass ein Crash alle weiteren Requests blockiert
+    page = await context.new_page()
+    await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
     try:
-        # Nutze "domcontentloaded" statt "networkidle" für schnellere Antworten
         await page.goto(profile_url, wait_until="domcontentloaded", timeout=15000)
     except Exception as e:
         print(f"[DEBUG] Goto-Fehler: {e}")
-        # Versuche trotzdem zu scrapen, vielleicht ist die Seite teilweise geladen
-        pass
+        await page.close()
+        return "Nicht vernetzt oder Fehler"
     
     # Suche nach "Vernetzt seit" oder "Connected since" in verschiedenen Element-Typen
     vernetzt_selectors = [
@@ -131,7 +136,8 @@ async def get_vernetzt_seit(profile_url, page):
     if not vernetzt_header:
         print(f"[DEBUG] URL: {page.url}")
         print(f"[DEBUG] Vernetzt-Header nicht gefunden mit allen Selektoren")
-        return "Nicht vernetzt oder Fehler"
+        await page.close()
+        return "Nicht vernetzt"
     
     # Versuche verschiedene Wege das Datum zu finden
     date_strategies = [
@@ -162,6 +168,8 @@ async def get_vernetzt_seit(profile_url, page):
         except:
             continue
     
+    await page.close()
+
     if formatted_date:
         return formatted_date
     else:

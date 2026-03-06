@@ -4,7 +4,7 @@ from vernetzt_seit_scraper import get_vernetzt_seit, setup_browser, close_browse
 
 app = FastAPI()
 browser = None
-page = None
+context = None
 playwright = None
 
 class ProfileRequest(BaseModel):
@@ -12,8 +12,8 @@ class ProfileRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup_event():
-    global browser, page, playwright
-    browser, page, playwright = await setup_browser()
+    global browser, context, playwright
+    browser, context, playwright = await setup_browser()
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -22,6 +22,6 @@ async def shutdown_event():
 
 @app.post("/vernetzt_seit/")
 async def vernetzt_seit(request: ProfileRequest):
-    global page
-    result = await get_vernetzt_seit(request.profile_url, page)
+    global context
+    result = await get_vernetzt_seit(request.profile_url, context)
     return {"vernetzt_seit": result}
