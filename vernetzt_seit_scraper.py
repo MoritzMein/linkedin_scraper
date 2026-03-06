@@ -104,26 +104,63 @@ async def get_vernetzt_seit(profile_url, page):
         # Versuche trotzdem zu scrapen, vielleicht ist die Seite teilweise geladen
         pass
     
-    # Suche nach dem p-Element mit "Vernetzt seit" oder "Connected since"
-    vernetzt_header = page.locator("p:has-text('Vernetzt seit'), p:has-text('Connected since')")
+    # Suche nach "Vernetzt seit" oder "Connected since" in verschiedenen Element-Typen
+    vernetzt_selectors = [
+        "p:has-text('Vernetzt seit'), p:has-text('Connected since')",
+        "span:has-text('Vernetzt seit'), span:has-text('Connected since')", 
+        "div:has-text('Vernetzt seit'), div:has-text('Connected since')",
+        "h3:has-text('Vernetzt seit'), h3:has-text('Connected since')",
+        "*:has-text('Vernetzt seit'), *:has-text('Connected since')"
+    ]
     
-    try:
-        await vernetzt_header.wait_for(timeout=5000)
-    except:
-        # Debug: Was ist auf der Seite?
+    vernetzt_header = None
+    for selector in vernetzt_selectors:
+        try:
+            element = page.locator(selector).first
+            await element.wait_for(timeout=2000)
+            vernetzt_header = element
+            print(f"[DEBUG] Gefunden mit Selector: {selector}")
+            break
+        except:
+            continue
+    
+    if not vernetzt_header:
         print(f"[DEBUG] URL: {page.url}")
-        print(f"[DEBUG] Vernetzt-Header nicht gefunden")
+        print(f"[DEBUG] Vernetzt-Header nicht gefunden mit allen Selektoren")
         return "Nicht vernetzt"
     
-    # Das Datum ist im nächsten p-Element Sibling
-    date_element = vernetzt_header.locator("xpath=following-sibling::p[1]")
+    # Versuche verschiedene Wege das Datum zu finden
+    date_strategies = [
+        # Nächstes Sibling Element
+        "xpath=following-sibling::*[1]",
+        "xpath=following-sibling::p[1]", 
+        "xpath=following-sibling::span[1]",
+        "xpath=following-sibling::div[1]",
+        # Parent und dann nächstes Element
+        "xpath=../following-sibling::*[1]",
+        "xpath=../../*[contains(text(), '202') or contains(text(), '201')]",
+        # Innerhalb des gleichen Containers
+        "xpath=../*[contains(text(), '202') or contains(text(), '201')]"
+    ]
     
-    try:
-        await date_element.wait_for(timeout=3000)
-        raw_date = await date_element.inner_text()
-        formatted_date = format_german_date(raw_date.strip())
+    formatted_date = None
+    for strategy in date_strategies:
+        try:
+            date_element = vernetzt_header.locator(strategy).first
+            await date_element.wait_for(timeout=1000)
+            raw_date = await date_element.inner_text()
+            
+            # Prüfe ob das wirklich ein Datum ist
+            if any(month in raw_date.lower() for month in ['jan', 'feb', 'mär', 'mar', 'apr', 'mai', 'may', 'jun', 'jul', 'aug', 'sep', 'okt', 'oct', 'nov', 'dez', 'dec']) or any(year in raw_date for year in ['202', '201']):
+                formatted_date = format_german_date(raw_date.strip())
+                print(f"[DEBUG] Datum gefunden mit: {strategy} -> {raw_date} -> {formatted_date}")
+                break
+        except:
+            continue
+    
+    if formatted_date:
         return formatted_date
-    except:
+    else:
         return "Vernetzt (Datum nicht gefunden)"
 
 
