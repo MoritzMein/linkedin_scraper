@@ -177,16 +177,22 @@ async def get_vernetzt_seit(profile_url, context):
     
     # Versuche verschiedene Wege das Datum zu finden
     date_strategies = [
-        # Nächstes Sibling Element
+        # Nächstes Sibling Element (funktioniert bei p-Struktur)
         "xpath=following-sibling::*[1]",
-        "xpath=following-sibling::p[1]", 
+        "xpath=following-sibling::p[1]",
         "xpath=following-sibling::span[1]",
         "xpath=following-sibling::div[1]",
+        # Kind-Elemente im gleichen Container (funktioniert wenn div alles enthält)
+        "xpath=.//*[contains(text(), '202') or contains(text(), '201')]",
+        "xpath=.//span[contains(text(), '202') or contains(text(), '201')]",
+        "xpath=.//p[contains(text(), '202') or contains(text(), '201')]",
         # Parent und dann nächstes Element
         "xpath=../following-sibling::*[1]",
         "xpath=../../*[contains(text(), '202') or contains(text(), '201')]",
-        # Innerhalb des gleichen Containers
-        "xpath=../*[contains(text(), '202') or contains(text(), '201')]"
+        # Innerhalb des gleichen Containers (eine Ebene hoch)
+        "xpath=../*[contains(text(), '202') or contains(text(), '201')]",
+        # Zwei Ebenen hoch suchen
+        "xpath=../..//*[contains(text(), '202') or contains(text(), '201')]",
     ]
     
     formatted_date = None
