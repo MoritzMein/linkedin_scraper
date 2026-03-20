@@ -44,11 +44,9 @@ async def setup_browser(cookies_json: str, account_name: str = ""):
 
     await context.add_cookies(cookies)
 
-    # Stealth auf Context-Ebene anwenden → gilt automatisch für alle neuen Seiten
-    Stealth().hook_playwright_context(context)
-
     # Session-Check
     page = await context.new_page()
+    await Stealth().apply_stealth_async(page)
     await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=15000)
     if "authwall" in page.url or "login" in page.url or "checkpoint" in page.url:
         await browser.close()
@@ -125,6 +123,7 @@ async def get_vernetzt_seit(profile_url, context):
 
     # Neue Seite pro Request - verhindert dass ein Crash alle weiteren Requests blockiert
     page = await context.new_page()
+    await Stealth().apply_stealth_async(page)
 
     try:
         # Erst das Profil laden (menschliches Verhalten)
