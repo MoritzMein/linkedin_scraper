@@ -1,31 +1,50 @@
 """
 Führe dieses Script LOKAL aus um LinkedIn-Cookies zu exportieren.
-Danach den ausgegebenen JSON-String als LINKEDIN_COOKIES in Railway eintragen.
+Danach den ausgegebenen JSON-String als ENV-Variable in Railway eintragen.
 
-Ausführen: python export_cookies.py
+Ausführen:
+  python export_cookies.py bjorn
+  python export_cookies.py dennis
+  python export_cookies.py ute
 """
 import asyncio
 import json
+import sys
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 import os
 
+ACCOUNT_CONFIG = {
+    "bjorn":  {"email_env": "LINKEDIN_EMAIL_BJORN",  "pass_env": "LINKEDIN_PASS_BJORN",  "env_key": "LINKEDIN_COOKIES_BJORN"},
+    "dennis": {"email_env": "LINKEDIN_EMAIL_DENNIS", "pass_env": "LINKEDIN_PASS_DENNIS", "env_key": "LINKEDIN_COOKIES_DENNIS"},
+    "ute":    {"email_env": "LINKEDIN_EMAIL_UTE",    "pass_env": "LINKEDIN_PASS_UTE",    "env_key": "LINKEDIN_COOKIES_UTE"},
+}
+
 async def main():
     load_dotenv()
-    EMAIL = os.getenv("LINKEDIN_EMAIL")
-    PASSWORD = os.getenv("LINKEDIN_PASS")
+
+    if len(sys.argv) < 2 or sys.argv[1].lower() not in ACCOUNT_CONFIG:
+        print("❌ Bitte Account angeben: python export_cookies.py [bjorn|dennis|ute]")
+        sys.exit(1)
+
+    account = sys.argv[1].lower()
+    config = ACCOUNT_CONFIG[account]
+
+    EMAIL = os.getenv(config["email_env"])
+    PASSWORD = os.getenv(config["pass_env"])
 
     if not EMAIL or not PASSWORD:
-        raise ValueError("LINKEDIN_EMAIL und LINKEDIN_PASS nicht in .env gesetzt!")
+        print(f"❌ {config['email_env']} und {config['pass_env']} nicht in .env gesetzt!")
+        sys.exit(1)
 
-    print("🔐 Öffne Browser für LinkedIn Login...")
+    print(f"🔐 Öffne Browser für LinkedIn Login ({account})...")
 
     async with async_playwright() as p:
         # Sichtbarer Browser damit du ggf. CAPTCHA/2FA lösen kannst
         browser = await p.chromium.launch(headless=False)
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={"width": 1440, "height": 900},
         )
         page = await context.new_page()
 
@@ -35,7 +54,6 @@ async def main():
         await page.click("button[type='submit']")
 
         print("⏳ Warte auf Login... (löse ggf. CAPTCHA/2FA im Browser)")
-        # Warte bis du auf dem Feed bist (bis zu 60 Sekunden für manuelle Eingaben)
         try:
             await page.wait_for_url("**/feed/**", timeout=60000)
         except:
@@ -46,16 +64,16 @@ async def main():
         await browser.close()
 
     cookies_json = json.dumps(cookies)
+    output_file = f"linkedin_cookies_{account}.json"
 
-    # In Datei speichern (als Backup)
-    with open("linkedin_cookies_export.json", "w") as f:
+    with open(output_file, "w") as f:
         f.write(cookies_json)
 
-    print("\n✅ Cookies exportiert!")
+    print(f"\n✅ Cookies für '{account}' exportiert!")
     print("=" * 60)
-    print("Kopiere diesen Wert als LINKEDIN_COOKIES in Railway:\n")
+    print(f"Kopiere diesen Wert als {config['env_key']} in Railway:\n")
     print(cookies_json)
     print("=" * 60)
-    print("\nDie Cookies wurden auch in 'linkedin_cookies_export.json' gespeichert.")
+    print(f"\nBackup gespeichert in '{output_file}'.")
 
 asyncio.run(main())

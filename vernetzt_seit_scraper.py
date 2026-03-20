@@ -1,16 +1,20 @@
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # wird nur lokal für debug_local.py gebraucht
 import os
 from playwright.async_api import async_playwright
+from playwright_stealth import Stealth
 import asyncio
 import json
+import random
 
-async def setup_browser():
-    load_dotenv()
-    cookies_json = os.getenv("LINKEDIN_COOKIES")
-
+async def setup_browser(cookies_json: str, account_name: str = ""):
+    """Startet einen Browser-Kontext für einen Account.
+    
+    cookies_json: JSON-String der Cookies (aus ENV-Variable)
+    account_name: Name des Accounts für Logging
+    """
     if not cookies_json:
         raise ValueError(
-            "LINKEDIN_COOKIES nicht gesetzt! "
+            f"Cookies für Account '{account_name}' nicht gesetzt! "
             "Führe export_cookies.py lokal aus und trage den Output in Railway ein."
         )
 
@@ -19,19 +23,30 @@ async def setup_browser():
     playwright = await async_playwright().start()
     browser = await playwright.chromium.launch(
         headless=True,
-        args=["--disable-blink-features=AutomationControlled"]
+        args=[
+            "--disable-blink-features=AutomationControlled",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+        ]
     )
     context = await browser.new_context(
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        viewport={"width": 1280, "height": 800},
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        viewport={"width": 1440, "height": 900},
         locale="de-DE",
+        timezone_id="Europe/Berlin",
+        color_scheme="light",
+        extra_http_headers={
+            "Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        }
     )
-    page = await context.new_page()
-    await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
     await context.add_cookies(cookies)
 
     # Session-Check
+    page = await context.new_page()
+    await Stealth().use_async(page)  # playwright-stealth auf jeder Seite anwenden
     await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=15000)
     if "authwall" in page.url or "login" in page.url or "checkpoint" in page.url:
         await browser.close()
@@ -42,7 +57,7 @@ async def setup_browser():
         )
     await page.close()  # Session-Check Seite schließen
 
-    print("✅ Browser bereit (Cookies geladen)")
+    print(f"✅ Browser bereit für Account '{account_name}' (Cookies geladen)")
     return browser, context, playwright
 
 async def close_browser(browser, playwright):
@@ -96,18 +111,39 @@ def format_german_date(date_str):
     
     return date_str
 
+async def _random_delay(min_s=1.5, max_s=4.0):
+    """Zufällige menschliche Verzögerung."""
+    await asyncio.sleep(random.uniform(min_s, max_s))
+
 async def get_vernetzt_seit(profile_url, context):
-    # Stelle sicher, dass die URL mit / endet, bevor wir overlay anhängen
+    # Stelle sicher, dass die URL mit / endet
     if not profile_url.endswith('/'):
         profile_url = profile_url + '/'
-    profile_url = profile_url + 'overlay/contact-info/'
+    contact_url = profile_url + 'overlay/contact-info/'
 
     # Neue Seite pro Request - verhindert dass ein Crash alle weiteren Requests blockiert
     page = await context.new_page()
-    await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    await Stealth().use_async(page)
 
     try:
-        await page.goto(profile_url, wait_until="domcontentloaded", timeout=15000)
+        # Erst das Profil laden (menschliches Verhalten)
+        await page.goto(profile_url, wait_until="domcontentloaded", timeout=20000)
+
+        # Checkpoint / Bot-Erkennung abfangen
+        if any(x in page.url for x in ["checkpoint", "authwall", "login"]):
+            print(f"[WARNUNG] LinkedIn Bot-Check erkannt: {page.url}")
+            await page.close()
+            return "BLOCKED"
+
+        await _random_delay(2.0, 5.0)
+
+        # Kurz scrollen wie ein Mensch
+        await page.mouse.wheel(0, random.randint(200, 600))
+        await _random_delay(1.0, 2.5)
+
+        # Dann zur Contact-Info navigieren
+        await page.goto(contact_url, wait_until="domcontentloaded", timeout=15000)
+        await _random_delay(1.0, 2.0)
     except Exception as e:
         print(f"[DEBUG] Goto-Fehler: {e}")
         await page.close()
